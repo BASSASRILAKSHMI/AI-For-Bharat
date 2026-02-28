@@ -3,57 +3,100 @@
 import { useState } from 'react'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
-import { Sparkles, Copy, RefreshCw, ThumbsUp, ThumbsDown } from 'lucide-react'
+import { Sparkles, Copy } from 'lucide-react'
 import { PLATFORMS } from '@/lib/mock-data'
 
 export default function ContentGeneratorPage() {
   const [selectedPlatform, setSelectedPlatform] = useState<string | null>('instagram')
-  const [topic, setTopic] = useState('AI and Machine Learning')
+  const [topic, setTopic] = useState('')
   const [generated, setGenerated] = useState(false)
-  const [selectedVariation, setSelectedVariation] = useState(0)
+  const [output, setOutput] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [tone, setTone] = useState('Professional')
+  const [contentLength, setContentLength] = useState('Medium')
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
 
-  const variations = [
-    '🚀 Excited to share insights on AI and Machine Learning! The future of technology is being shaped right now. From predictive analytics to natural language processing, the possibilities are endless. What are your thoughts on the AI revolution? Drop your insights in the comments! 💭 #AI #MachineLearning #Technology #Innovation',
-    'The world of Machine Learning is evolving faster than ever! 📈 Discover how AI is transforming industries, from healthcare to finance. Join the conversation about the future of intelligent systems. What aspect of ML interests you the most? Let\'s discuss! #AI #ML #TechTrends',
-    'Machine Learning isn\'t just for tech companies anymore. 🤖 Every industry is adopting AI to drive innovation. Whether it\'s automation, prediction, or personalization - AI is changing the game. What\'s your AI superpower? Share your experiences! #ArtificialIntelligence #FutureOfWork #Innovation',
-  ]
+  const [mainType, setMainType] = useState('Text')
+  const [subType, setSubType] = useState('Paragraph')
 
-  const handleGenerate = () => {
-    setGenerated(true)
-    setSelectedVariation(0)
+  const subTypeOptions: Record<string, string[]> = {
+    Text: ['Paragraph', 'Hashtags', 'Thumbnail', 'Description'],
+    Video: ['Video Script', 'Thumbnail', 'Description'],
+    Audio: ['Audio Script']
+  }
+
+  const buttonStyle = (active: boolean) =>
+    `p-3 rounded-lg border-2 transition-all font-medium text-sm ${
+      active
+        ? 'border-primary bg-primary/10 text-primary'
+        : 'border-border hover:border-primary/50 text-foreground'
+    }`
+
+  const handleGenerate = async () => {
+    try {
+      setLoading(true)
+      setGenerated(false)
+      setErrorMessage(null)
+
+      if (!topic.trim()) throw new Error('Please enter a prompt or topic')
+
+      const response = await fetch('/api/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text: topic,
+          platform: selectedPlatform,
+          tone,
+          length: contentLength,
+          mainType,
+          subType
+        }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) throw new Error(data.error || 'Generation failed')
+
+      setOutput(data.output.trim())
+      setGenerated(true)
+
+    } catch (error: any) {
+      setErrorMessage(error.message || 'Error generating content')
+    } finally {
+      setLoading(false)
+    }
   }
 
   const handleCopy = () => {
-    navigator.clipboard.writeText(variations[selectedVariation])
+    navigator.clipboard.writeText(output)
   }
 
   return (
     <div className="space-y-6 pb-12">
+
       {/* Header */}
       <div>
         <h1 className="text-3xl font-bold text-foreground">Content Generator</h1>
-        <p className="text-muted-foreground mt-1">Generate platform-optimized content with AI</p>
+        <p className="text-muted-foreground mt-1">
+          You can write full instructions or just a topic. AI will understand.
+        </p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Generation Settings */}
-        <Card className="lg:col-span-2 p-8">
-          <h2 className="text-lg font-semibold text-foreground mb-6">Generate New Content</h2>
 
-          {/* Platform Selection */}
+        {/* Main Settings */}
+        <Card className="lg:col-span-2 p-8">
+          <h2 className="text-lg font-semibold mb-6">Generate New Content</h2>
+
+          {/* Platform */}
           <div className="mb-6">
-            <label className="block text-sm font-medium text-foreground mb-3">Select Platform</label>
+            <label className="block text-sm font-medium mb-3">Select Platform</label>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
               {PLATFORMS.map((platform) => (
                 <button
                   key={platform.id}
                   onClick={() => setSelectedPlatform(platform.id)}
-                  className={`p-3 rounded-lg border-2 transition-all font-medium text-sm ${
-                    selectedPlatform === platform.id
-                      ? 'border-primary bg-primary/10 text-primary'
-                      : 'border-border hover:border-primary/50 text-foreground'
-                  }`}
+                  className={buttonStyle(selectedPlatform === platform.id)}
                 >
                   {platform.name}
                 </button>
@@ -61,45 +104,86 @@ export default function ContentGeneratorPage() {
             </div>
           </div>
 
-          {/* Topic Input */}
+          {/* Prompt Input */}
           <div className="mb-6">
-            <label className="block text-sm font-medium text-foreground mb-2">Topic or Keyword</label>
-            <input
-              type="text"
+            <label className="block text-sm font-medium mb-2">
+              Prompt or Topic
+            </label>
+            <textarea
               value={topic}
               onChange={(e) => setTopic(e.target.value)}
-              placeholder="What would you like to create content about?"
-              className="w-full px-4 py-3 rounded-lg border border-border bg-secondary text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
+              rows={4}
+              placeholder="Example:
+Write a humorous short Instagram caption about AI.
+OR
+AI in healthcare."
+              className="w-full px-4 py-3 rounded-lg border border-border bg-secondary text-foreground resize-none"
             />
+            <p className="text-xs text-muted-foreground mt-2">
+              If you include tone, format, or length in your prompt, AI will automatically detect it.
+            </p>
           </div>
 
-          {/* Tone Selection */}
+          {/* Main Type */}
           <div className="mb-6">
-            <label className="block text-sm font-medium text-foreground mb-3">Tone</label>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-              {['Professional', 'Casual', 'Humorous', 'Inspirational'].map((tone) => (
+            <label className="block text-sm font-medium mb-3">Main Type (Optional)</label>
+            <div className="grid grid-cols-3 gap-2">
+              {['Text', 'Video', 'Audio'].map((type) => (
                 <button
-                  key={tone}
-                  className="p-3 rounded-lg border border-border hover:border-primary/50 text-foreground text-sm font-medium transition-all"
+                  key={type}
+                  onClick={() => {
+                    setMainType(type)
+                    setSubType(subTypeOptions[type][0])
+                  }}
+                  className={buttonStyle(mainType === type)}
                 >
-                  {tone}
+                  {type}
                 </button>
               ))}
             </div>
           </div>
 
-          {/* Content Length */}
+          {/* Format */}
           <div className="mb-6">
-            <label className="block text-sm font-medium text-foreground mb-3">Content Length</label>
+            <label className="block text-sm font-medium mb-3">Format (Optional)</label>
+            <div className="grid grid-cols-2 gap-2">
+              {subTypeOptions[mainType].map((type) => (
+                <button
+                  key={type}
+                  onClick={() => setSubType(type)}
+                  className={buttonStyle(subType === type)}
+                >
+                  {type}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Tone */}
+          <div className="mb-6">
+            <label className="block text-sm font-medium mb-3">Tone (Optional)</label>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              {['Professional', 'Casual', 'Humorous', 'Inspirational'].map((t) => (
+                <button
+                  key={t}
+                  onClick={() => setTone(t)}
+                  className={buttonStyle(tone === t)}
+                >
+                  {t}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Length */}
+          <div className="mb-6">
+            <label className="block text-sm font-medium mb-3">Content Length (Optional)</label>
             <div className="grid grid-cols-3 gap-2">
               {['Short', 'Medium', 'Long'].map((length) => (
                 <button
                   key={length}
-                  className={`p-3 rounded-lg border text-sm font-medium transition-all ${
-                    length === 'Medium'
-                      ? 'border-primary bg-primary/10 text-primary'
-                      : 'border-border hover:border-primary/50 text-foreground'
-                  }`}
+                  onClick={() => setContentLength(length)}
+                  className={buttonStyle(contentLength === length)}
                 >
                   {length}
                 </button>
@@ -107,124 +191,59 @@ export default function ContentGeneratorPage() {
             </div>
           </div>
 
-          <Button onClick={handleGenerate} className="w-full" size="lg">
+          {errorMessage && (
+            <p className="text-sm text-red-500 mb-4">{errorMessage}</p>
+          )}
+
+          <Button onClick={handleGenerate} className="w-full" size="lg" disabled={loading}>
             <Sparkles size={18} className="mr-2" />
-            Generate Content
+            {loading ? 'Generating...' : 'Generate Content'}
           </Button>
         </Card>
 
-        {/* Quick Features */}
+        {/* Feature Card */}
         <Card className="p-6">
-          <h3 className="font-semibold text-foreground mb-4">Features</h3>
-          <div className="space-y-3">
-            <div className="p-3 rounded-lg bg-primary/5 border border-primary/20">
-              <p className="text-sm font-medium text-foreground">Multiple Variations</p>
-              <p className="text-xs text-muted-foreground mt-1">Get 3 unique versions to choose from</p>
-            </div>
-            <div className="p-3 rounded-lg bg-accent/5 border border-accent/20">
-              <p className="text-sm font-medium text-foreground">Platform-Optimized</p>
-              <p className="text-xs text-muted-foreground mt-1">Content tailored to each platform</p>
-            </div>
-            <div className="p-3 rounded-lg bg-secondary border border-border">
-              <p className="text-sm font-medium text-foreground">Hashtags Included</p>
-              <p className="text-xs text-muted-foreground mt-1">Trending hashtags for reach</p>
-            </div>
-            <div className="p-3 rounded-lg bg-secondary border border-border">
-              <p className="text-sm font-medium text-foreground">Emoji Enhanced</p>
-              <p className="text-xs text-muted-foreground mt-1">Strategic emoji placement</p>
-            </div>
-          </div>
+          <h3 className="font-semibold mb-4">Smart AI Features</h3>
+          <ul className="text-sm text-muted-foreground space-y-2">
+            <li>• Detects tone automatically</li>
+            <li>• Understands typos</li>
+            <li>• Adjusts length intelligently</li>
+            <li>• Generates format-aware content</li>
+          </ul>
         </Card>
       </div>
 
-      {/* Generated Content */}
-      {generated && (
-        <div className="space-y-6 animate-in fade-in duration-500">
-          <div className="flex items-center justify-between">
-            <h2 className="text-2xl font-bold text-foreground">Generated Variations</h2>
-            <Button variant="outline" onClick={handleGenerate} size="sm" className="gap-2">
-              <RefreshCw size={16} />
-              Regenerate
-            </Button>
+      {/* Output */}
+      {generated && output && (
+        <Card className="p-6 mt-6">
+          <div className="whitespace-pre-wrap mb-6 text-foreground">
+            {output}
           </div>
 
-          {/* Variation Tabs */}
-          <div className="flex gap-2 border-b border-border">
-            {variations.map((_, index) => (
-              <button
-                key={index}
-                onClick={() => setSelectedVariation(index)}
-                className={`px-4 py-3 font-medium text-sm border-b-2 transition-all ${
-                  selectedVariation === index
-                    ? 'border-primary text-primary'
-                    : 'border-transparent text-muted-foreground hover:text-foreground'
-                }`}
-              >
-                Variation {index + 1}
-              </button>
-            ))}
-          </div>
-
-          {/* Content Preview */}
-          <Card className="p-6">
-            <div className="space-y-4">
-              <div className="p-4 rounded-lg bg-secondary border border-border">
-                <p className="text-foreground leading-relaxed whitespace-pre-wrap">{variations[selectedVariation]}</p>
-              </div>
-
-              {/* Stats */}
-              <div className="grid grid-cols-3 gap-4">
-                <div className="text-center p-3 rounded-lg bg-secondary">
-                  <p className="text-xs text-muted-foreground mb-1">Characters</p>
-                  <p className="text-lg font-bold text-foreground">{variations[selectedVariation].length}</p>
-                </div>
-                <div className="text-center p-3 rounded-lg bg-secondary">
-                  <p className="text-xs text-muted-foreground mb-1">Words</p>
-                  <p className="text-lg font-bold text-foreground">{variations[selectedVariation].split(/\s+/).length}</p>
-                </div>
-                <div className="text-center p-3 rounded-lg bg-secondary">
-                  <p className="text-xs text-muted-foreground mb-1">Emojis</p>
-                  <p className="text-lg font-bold text-foreground">{(variations[selectedVariation].match(/[\p{Emoji}]/gu) || []).length}</p>
-                </div>
-              </div>
-
-              {/* Actions */}
-              <div className="flex gap-3 flex-col sm:flex-row">
-                <Button onClick={handleCopy} className="flex-1" variant="default" size="lg">
-                  <Copy size={18} className="mr-2" />
-                  Copy to Clipboard
-                </Button>
-                <Button variant="outline" size="lg" className="flex-1">
-                  <Sparkles size={18} className="mr-2" />
-                  Edit & Refine
-                </Button>
-              </div>
-
-              {/* Feedback */}
-              <div className="flex gap-2 pt-4 border-t border-border">
-                <Button variant="outline" size="sm" className="flex-1 gap-2">
-                  <ThumbsUp size={16} />
-                  Helpful
-                </Button>
-                <Button variant="outline" size="sm" className="flex-1 gap-2">
-                  <ThumbsDown size={16} />
-                  Not Helpful
-                </Button>
-              </div>
+          <div className="grid grid-cols-3 gap-4 mb-6 text-center">
+            <div>
+              <p className="text-xs text-muted-foreground">Characters</p>
+              <p className="font-bold">{output.length}</p>
             </div>
-          </Card>
+            <div>
+              <p className="text-xs text-muted-foreground">Words</p>
+              <p className="font-bold">
+                {output.split(/\s+/).filter(Boolean).length}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Emojis</p>
+              <p className="font-bold">
+                {(output.match(/[\p{Emoji}]/gu) || []).length}
+              </p>
+            </div>
+          </div>
 
-          {/* Tips */}
-          <Card className="p-6 bg-accent/5 border-accent/20">
-            <h3 className="font-semibold text-foreground mb-3">Tips for Best Results</h3>
-            <ul className="space-y-2 text-sm text-muted-foreground">
-              <li>• Customize the content to match your brand voice</li>
-              <li>• Test different hashtags to find what works for your audience</li>
-              <li>• Post at optimal times for maximum engagement</li>
-              <li>• Mix generated content with authentic personal stories</li>
-            </ul>
-          </Card>
-        </div>
+          <Button onClick={handleCopy}>
+            <Copy size={16} className="mr-2" />
+            Copy to Clipboard
+          </Button>
+        </Card>
       )}
     </div>
   )
