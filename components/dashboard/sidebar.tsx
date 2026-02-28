@@ -23,10 +23,10 @@ import { cn } from '@/lib/utils'
 
 const navigation = [
   { name: 'Dashboard', href: '/dashboard', icon: BarChart3 },
-  { name: 'Content Analyzer', href: '/dashboard/content-analyzer', icon: FileText },
   { name: 'Content Generator', href: '/dashboard/content-generator', icon: Sparkles },
   { name: 'Canvas Editor', href: '/dashboard/canvas-editor', icon: Edit3 },
   { name: 'Video Intelligence', href: '/dashboard/video-intelligence', icon: Video },
+  { name: 'Story Gap Filler', href: '/dashboard/story-gap-filler', icon: FileText },
   { name: 'Trend Insights', href: '/dashboard/trend-insights', icon: TrendingUp },
   { name: 'Safety & Integrity', href: '/dashboard/safety-integrity', icon: Shield },
   { name: 'Audience Simulator', href: '/dashboard/audience-simulator', icon: Users },
