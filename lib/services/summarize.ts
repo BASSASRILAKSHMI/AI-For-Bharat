@@ -411,17 +411,24 @@ function enforcePlatformUniqueness(
       finalized.some((prev) => summariesTooSimilar(prev.text, text)) &&
       attempts < 3
     ) {
-      const fallbackParts = buildAbstractiveFallbackParts(
-        insights,
-        options,
-        current.platformId,
-        attempts + 1
-      )
-      text = renderSummaryText(current.platformId, fallbackParts, options)
+      if (insights.length) {
+        const fallbackParts = buildAbstractiveFallbackParts(
+          insights,
+          options,
+          current.platformId,
+          attempts + 1
+        )
+        text = renderSummaryText(current.platformId, fallbackParts, options)
+      } else {
+        text = truncate(
+          `${platformLead(current.platformId)} ${paraphraseSentence(text)}`,
+          PLATFORM_CONSTRAINTS[current.platformId].maxChars
+        )
+      }
       attempts += 1
     }
 
-    if (lexicalOverlap(content, text) >= 0.9) {
+    if (content && lexicalOverlap(content, text) >= 0.9 && insights.length) {
       const fallbackParts = buildAbstractiveFallbackParts(insights, options, current.platformId, 2)
       text = renderSummaryText(current.platformId, fallbackParts, options)
     }
@@ -701,5 +708,138 @@ export async function runSummarization(
         emotionalScore: s.emotionalScore,
       })),
     },
+  }
+}
+
+export async function runVideoSummarization(
+  videoBase64: string,
+  mimeType: string,
+  options: SummarizationOptions,
+  contextText?: string
+): Promise<SummarizationResult | null> {
+  const apiKey = process.env.GOOGLE_API_KEY?.trim()
+  if (!apiKey?.trim()) return null
+  if (!videoBase64.trim()) return null
+
+  try {
+    const configuredModel = process.env.GOOGLE_SUMMARIZATION_MODEL?.trim()
+    const modelCandidates = [
+      configuredModel,
+      'gemini-2.0-flash',
+      'gemini-2.5-flash',
+      'gemini-1.5-flash-latest',
+    ].filter((m): m is string => Boolean(m))
+
+    const prompt = `Analyze this video and produce meaningful platform-specific summaries.
+Rules:
+- Understand the whole video content first, then summarize.
+- Do not output copied transcript fragments.
+- Each platform summary must be distinct in tone and phrasing.
+- Audience: ${options.audience}
+- Style: ${options.style}
+- Preserve emotion: ${options.preserveEmotion ? 'yes' : 'no'}
+- Importance weight: ${options.importanceWeight}
+- Platforms: ${options.platforms.join(', ')}
+- Return JSON only with shape:
+{
+  "summaries": [{ "platformId": string, "text": string }],
+  "analysis": {
+    "emotionalWeight": number,
+    "topSentences": string[],
+    "sentenceInsights": [{ "sentence": string, "importanceScore": number, "emotionalScore": number }]
+  }
+}
+${contextText?.trim() ? `Extra context from user: ${contextText.trim()}` : ''}`
+
+    let raw = ''
+    let lastError: { status: number; body: string; model: string } | null = null
+
+    for (const model of modelCandidates) {
+      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [
+            {
+              role: 'user',
+              parts: [
+                { text: prompt },
+                {
+                  inline_data: {
+                    mime_type: mimeType,
+                    data: videoBase64,
+                  },
+                },
+              ],
+            },
+          ],
+          generationConfig: {
+            temperature: 0.75,
+            responseMimeType: 'application/json',
+          },
+        }),
+      })
+
+      if (!res.ok) {
+        const err = await res.text()
+        lastError = { status: res.status, body: err, model }
+        if (res.status === 404) continue
+        console.error('Gemini video summarization error:', res.status, err)
+        return null
+      }
+
+      const data = (await res.json()) as {
+        candidates?: Array<{
+          content?: { parts?: Array<{ text?: string }> }
+        }>
+      }
+      raw = data.candidates?.[0]?.content?.parts?.[0]?.text ?? ''
+      if (raw.trim()) break
+    }
+
+    if (!raw.trim()) {
+      if (lastError) {
+        console.error(
+          'Gemini video summarization error:',
+          lastError.status,
+          `model=${lastError.model}`,
+          lastError.body
+        )
+      }
+      return null
+    }
+
+    const jsonRaw = extractJsonObject(raw)
+    if (!jsonRaw) return null
+
+    const parsed = JSON.parse(jsonRaw) as Record<string, unknown>
+    const modelSummaries = parseModelSummaries(parsed)
+    const summaries: PlatformSummary[] = options.platforms.map((platformId) => {
+      const modelText = modelSummaries.find((s) => s.platformId === platformId)?.text ?? ''
+      const text = modelText
+        ? normalizeModelSummary(modelText, platformId, options)
+        : truncate('Summary unavailable for this platform.', PLATFORM_CONSTRAINTS[platformId].maxChars)
+
+      return {
+        platformId,
+        platformName: PLATFORM_NAMES[platformId],
+        text,
+        charCount: text.length,
+        wordCount: text.split(/\s+/).filter(Boolean).length,
+        tone: PLATFORM_CONSTRAINTS[platformId].tone,
+      }
+    })
+
+    return {
+      summaries: enforcePlatformUniqueness(summaries, contextText ?? '', options, []),
+      analysis:
+        parsed.analysis && typeof parsed.analysis === 'object'
+          ? (parsed.analysis as SummarizationResult['analysis'])
+          : undefined,
+    }
+  } catch (e) {
+    console.error('Gemini video summarization fetch error:', e)
+    return null
   }
 }

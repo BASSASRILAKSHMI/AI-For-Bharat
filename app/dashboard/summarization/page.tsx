@@ -26,6 +26,8 @@ import type {
   SummarizationResult,
 } from '@/lib/types/summarization'
 
+type InputMode = 'text' | 'video'
+
 const SUMMARY_STYLES: { value: SummaryStyle; label: string }[] = [
   { value: 'bullet', label: 'Bullet points' },
   { value: 'paragraph', label: 'Paragraph' },
@@ -50,7 +52,10 @@ const DEFAULT_CONTENT =
   'Just launched our revolutionary AI platform that helps creators and brands manage their content across all social media channels. With advanced analytics, AI-powered suggestions, and safety compliance checks, ContentIQ is the complete solution for content creators. We are excited to bring this to market and help thousands of creators succeed.'
 
 export default function SummarizationPage() {
+  const [inputMode, setInputMode] = useState<InputMode>('text')
   const [content, setContent] = useState(DEFAULT_CONTENT)
+  const [videoFile, setVideoFile] = useState<File | null>(null)
+  const [videoContext, setVideoContext] = useState('')
   const [platforms, setPlatforms] = useState<PlatformId[]>([
     'instagram',
     'tiktok',
@@ -64,7 +69,6 @@ export default function SummarizationPage() {
   const [importanceWeight, setImportanceWeight] = useState(50)
   const [selectedPlatform, setSelectedPlatform] = useState<PlatformId | null>(null)
   const [summaries, setSummaries] = useState<PlatformSummary[] | null>(null)
-  const [analysis, setAnalysis] = useState<SummarizationResult['analysis'] | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -81,33 +85,51 @@ export default function SummarizationPage() {
   }
 
   const handleSummarize = async () => {
-    if (!content.trim()) {
+    if (platforms.length === 0) {
+      setError('Select at least one platform.')
+      return
+    }
+    if (inputMode === 'text' && !content.trim()) {
       setError('Please enter some content to summarize.')
       return
     }
-    if (platforms.length === 0) {
-      setError('Select at least one platform.')
+    if (inputMode === 'video' && !videoFile) {
+      setError('Please upload a video to summarize.')
+      return
+    }
+    if (inputMode === 'video' && videoFile && videoFile.size > 20 * 1024 * 1024) {
+      setError('Video is too large. Upload a file up to 20MB.')
       return
     }
 
     setError(null)
     setLoading(true)
     setSummaries(null)
-    setAnalysis(null)
 
     try {
-      const res = await fetch('/api/summarize', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content: content.trim(), options }),
-      })
+      const res =
+        inputMode === 'text'
+          ? await fetch('/api/summarize', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ content: content.trim(), options }),
+            })
+          : await (async () => {
+              const form = new FormData()
+              form.append('video', videoFile as Blob)
+              form.append('options', JSON.stringify(options))
+              form.append('context', videoContext.trim())
+              return fetch('/api/summarize-video', {
+                method: 'POST',
+                body: form,
+              })
+            })()
       const data = (await res.json()) as SummarizationResult & { error?: string }
       if (!res.ok) {
         setError(data.error || 'Summarization failed.')
         return
       }
       setSummaries(data.summaries ?? [])
-      setAnalysis(data.analysis ?? null)
       if (data.summaries?.length) setSelectedPlatform(data.summaries[0].platformId)
     } catch {
       setError('Network error. Please try again.')
@@ -122,8 +144,9 @@ export default function SummarizationPage() {
 
   const handleReset = () => {
     setSummaries(null)
-    setAnalysis(null)
     setSelectedPlatform(null)
+    setVideoFile(null)
+    setVideoContext('')
     setError(null)
   }
 
@@ -160,19 +183,70 @@ export default function SummarizationPage() {
           <div className="rounded-lg border border-border p-3 bg-secondary/40">
             Generates audience-specific summaries: student, professional, and general.
           </div>
+          <div className="rounded-lg border border-border p-3 bg-secondary/40">
+            Supports text input and video input with optional context notes.
+          </div>
         </div>
       </Card>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <Card className="lg:col-span-2 p-6">
-          <h2 className="text-lg font-semibold text-foreground mb-4">Original Content</h2>
-          <textarea
-            value={content}
-            onChange={(e) => setContent(e.target.value)}
-            placeholder="Paste your original content here..."
-            className="w-full px-4 py-3 rounded-lg border border-border bg-secondary text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 resize-none mb-4"
-            rows={8}
-          />
+          <h2 className="text-lg font-semibold text-foreground mb-4">Input Source</h2>
+          <div className="flex gap-2 mb-4">
+            <Button
+              type="button"
+              variant={inputMode === 'text' ? 'default' : 'outline'}
+              onClick={() => setInputMode('text')}
+            >
+              Text
+            </Button>
+            <Button
+              type="button"
+              variant={inputMode === 'video' ? 'default' : 'outline'}
+              onClick={() => setInputMode('video')}
+            >
+              Video
+            </Button>
+          </div>
+
+          {inputMode === 'text' ? (
+            <textarea
+              value={content}
+              onChange={(e) => setContent(e.target.value)}
+              placeholder="Paste your original content here..."
+              className="w-full px-4 py-3 rounded-lg border border-border bg-secondary text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 resize-none mb-4"
+              rows={8}
+            />
+          ) : (
+            <div className="space-y-3 mb-4">
+              <div>
+                <Label className="text-sm font-medium text-foreground">Upload video (max 20MB)</Label>
+                <input
+                  type="file"
+                  accept="video/*"
+                  onChange={(e) => setVideoFile(e.target.files?.[0] ?? null)}
+                  className="mt-1 block w-full text-sm text-foreground file:mr-3 file:rounded-md file:border-0 file:bg-primary file:px-3 file:py-2 file:text-primary-foreground"
+                />
+                {videoFile && (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Selected: {videoFile.name} ({Math.round(videoFile.size / 1024 / 1024)}MB)
+                  </p>
+                )}
+              </div>
+              <div>
+                <Label className="text-sm font-medium text-foreground">
+                  Optional context (what is happening in the video)
+                </Label>
+                <textarea
+                  value={videoContext}
+                  onChange={(e) => setVideoContext(e.target.value)}
+                  placeholder="Example: product demo, tutorial, interview, highlights..."
+                  className="mt-1 w-full px-4 py-3 rounded-lg border border-border bg-secondary text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 resize-none"
+                  rows={3}
+                />
+              </div>
+            </div>
+          )}
 
           <div className="space-y-4 mb-4">
             <div>
@@ -249,12 +323,12 @@ export default function SummarizationPage() {
               {loading ? (
                 <>
                   <Loader2 className="mr-2 size-4 animate-spin" />
-                  Generating...
+                  Generating {inputMode === 'video' ? 'video' : 'text'} summaries...
                 </>
               ) : (
                 <>
                   <Sparkles size={18} className="mr-2" />
-                  Generate Summaries
+                  Generate {inputMode === 'video' ? 'Video' : 'Text'} Summaries
                 </>
               )}
             </Button>
@@ -288,78 +362,6 @@ export default function SummarizationPage() {
 
       {summaries && summaries.length > 0 && (
         <div className="space-y-6 animate-in fade-in duration-500">
-          {analysis && (
-            <Card className="p-6 bg-accent/5 border-accent/20">
-              <h3 className="text-lg font-semibold text-foreground mb-4">Dynamic Analysis</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                <div className="rounded-lg border border-border p-4 bg-card">
-                  <p className="text-xs text-muted-foreground mb-1">Emotional Weight</p>
-                  <p className="text-2xl font-bold text-foreground">
-                    {Math.round((analysis.emotionalWeight ?? 0) * 100)}%
-                  </p>
-                </div>
-                <div className="rounded-lg border border-border p-4 bg-card">
-                  <p className="text-xs text-muted-foreground mb-1">Top Important Sentences</p>
-                  <p className="text-2xl font-bold text-foreground">
-                    {analysis.topSentences?.length ?? 0}
-                  </p>
-                </div>
-              </div>
-
-              {!!analysis.topSentences?.length && (
-                <div className="mb-4">
-                  <p className="text-sm font-medium text-foreground mb-2">Most Important Lines</p>
-                  <div className="space-y-2">
-                    {analysis.topSentences.slice(0, 3).map((line, idx) => (
-                      <p
-                        key={`${line}-${idx}`}
-                        className="text-sm text-muted-foreground rounded-md border border-border p-2 bg-card"
-                      >
-                        {idx + 1}. {line}
-                      </p>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {!!analysis.sentenceInsights?.length && (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b border-border">
-                        <th className="text-left py-2 px-2 text-muted-foreground font-medium">
-                          Sentence
-                        </th>
-                        <th className="text-center py-2 px-2 text-muted-foreground font-medium">
-                          Importance
-                        </th>
-                        <th className="text-center py-2 px-2 text-muted-foreground font-medium">
-                          Emotion
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {analysis.sentenceInsights.slice(0, 8).map((s, idx) => (
-                        <tr
-                          key={`${s.sentence}-${idx}`}
-                          className="border-b border-border/50 last:border-0"
-                        >
-                          <td className="py-3 px-2 text-foreground">{s.sentence}</td>
-                          <td className="py-3 px-2 text-center text-muted-foreground">
-                            {Math.round(s.importanceScore * 100)}%
-                          </td>
-                          <td className="py-3 px-2 text-center text-muted-foreground">
-                            {Math.round(s.emotionalScore * 100)}%
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </Card>
-          )}
-
           <h2 className="text-2xl font-bold text-foreground">Platform-Specific Summaries</h2>
           {summaries.map((s) => (
             <Card
