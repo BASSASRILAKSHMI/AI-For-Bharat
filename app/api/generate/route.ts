@@ -6,9 +6,46 @@ export async function POST(req: Request) {
     const { text, platform, tone, length, mainType, subType } =
       await req.json();
 
-    // ---------------------------
-    // STEP 1: AI INTENT DETECTION
-    // ---------------------------
+    // ==============================
+    // SERPER SEARCH INTEGRATION
+    // ==============================
+    let searchContext = "";
+
+    if (text && text.length > 3) {
+      try {
+        const serperResponse = await axios.post(
+          "https://google.serper.dev/search",
+          {
+            q: text,
+            num: 5,
+          },
+          {
+            headers: {
+              "X-API-KEY": process.env.SERPER_API_KEY!,
+              "Content-Type": "application/json",
+            },
+          }
+        );
+
+        const results = serperResponse.data.organic || [];
+
+        searchContext = results
+          .slice(0, 5)
+          .map(
+            (item: any, index: number) =>
+              `Result ${index + 1}:
+Title: ${item.title}
+Snippet: ${item.snippet}`
+          )
+          .join("\n\n");
+      } catch {
+        console.log("Serper failed — continuing without search.");
+      }
+    }
+
+    // ==============================
+    // INTENT DETECTION
+    // ==============================
     const intentResponse = await axios.post(
       "https://api.groq.com/openai/v1/chat/completions",
       {
@@ -17,21 +54,12 @@ export async function POST(req: Request) {
           {
             role: "user",
             content: `
-Analyze the following user prompt and extract:
+Extract:
+Tone (Professional, Casual, Humorous, Inspirational)
+Length (Short, Medium, Long)
+Format (Paragraph, Hashtags, Thumbnail, Video Script, Audio Script, Description)
 
-- Tone (Professional, Casual, Humorous, Inspirational)
-- Length (Short, Medium, Long)
-- Format (Paragraph, Hashtags, Thumbnail, Video Script, Audio Script, Description)
-
-Return ONLY valid JSON like:
-
-{
-  "tone": "",
-  "length": "",
-  "format": ""
-}
-
-If not specified, return null.
+Return ONLY JSON.
 
 User Prompt:
 ${text}
@@ -44,119 +72,154 @@ ${text}
       {
         headers: {
           Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
-          "Content-Type": "application/json",
         },
       }
     );
 
-    let detected = {
-      tone: null,
-      length: null,
-      format: null,
-    };
+    let detected = { tone: null, length: null, format: null };
 
     try {
       detected = JSON.parse(
         intentResponse.data.choices[0].message.content
       );
-    } catch {
-      // If parsing fails, fallback silently
-    }
+    } catch {}
 
     const finalTone = detected.tone || tone;
     const finalLength = detected.length || length;
-    const finalSubType = detected.format || subType;
 
-    // ---------------------------
-    // STEP 2: EMOJI CONTROL
-    // ---------------------------
+    // Only override format if default Paragraph
+    const finalSubType =
+      subType === "Paragraph" ? detected.format || subType : subType;
+
     const emojiRule =
       finalTone === "Professional"
         ? "Do NOT use emojis."
         : "Use relevant emojis naturally where appropriate.";
 
-    // ---------------------------
-    // STEP 3: FORMAT RULES
-    // ---------------------------
+    // ==============================
+    // STRICT FORMAT RULES
+    // ==============================
     let formatRules = "";
+    let minWords = 0;
+    let maxWords = 0;
+    let minTags = 0;
+    let maxTags = 0;
 
     if (finalSubType === "Hashtags") {
-      let countRule =
-        finalLength === "Short"
-          ? "Generate 1 to 3 hashtags."
-          : finalLength === "Medium"
-          ? "Generate 5 to 6 hashtags."
-          : "Generate 10 to 15 hashtags.";
+      if (finalLength === "Short") {
+        minTags = 1;
+        maxTags = 3;
+      } else if (finalLength === "Medium") {
+        minTags = 4;
+        maxTags = 7;
+      } else {
+        minTags = 9;
+        maxTags = 11;
+      }
 
       formatRules = `
 Generate ONLY hashtags.
 
-Rules:
-- ${countRule}
+STRICT RULES:
+- Generate between ${minTags} and ${maxTags} hashtags.
 - EVERY tag MUST start with #.
 - Separate using spaces.
-- No explanation.
+- No sentences.
+- No explanations.
 - ${emojiRule}
 `;
     } else {
+      if (finalLength === "Short") {
+        minWords = 60;
+        maxWords = 90;
+      } else if (finalLength === "Medium") {
+        minWords = 120;
+        maxWords = 160;
+      } else {
+        minWords = 250;
+        maxWords = 350;
+      }
+
       formatRules = `
 Generate ONE high-quality ${finalSubType}.
 
-Length Guidelines:
-- Short: 60–100 words
-- Medium: 120–180 words
-- Long: 250–400 words
+STRICT LENGTH:
+- Between ${minWords} and ${maxWords} words.
 
 Rules:
-- Respect selected length.
+- Follow word range strictly.
 - No numbering.
-- No "Variation".
+- No variations.
+- Do NOT mention word count.
 - ${emojiRule}
 `;
     }
 
-    // ---------------------------
-    // STEP 4: FINAL GENERATION
-    // ---------------------------
-    const response = await axios.post(
-      "https://api.groq.com/openai/v1/chat/completions",
-      {
-        model: "llama-3.1-8b-instant",
-        messages: [
-          {
-            role: "user",
-            content: `
+    // ==============================
+    // GENERATION
+    // ==============================
+    async function generateContent() {
+      const response = await axios.post(
+        "https://api.groq.com/openai/v1/chat/completions",
+        {
+          model: "llama-3.1-8b-instant",
+          messages: [
+            {
+              role: "user",
+              content: `
 You are a professional content strategist.
 
 Platform: ${platform}
-Content Type: ${mainType}
 Format: ${finalSubType}
 Tone: ${finalTone}
-Length: ${finalLength}
 
 User Prompt:
 ${text}
 
+Live Search Context:
+${searchContext || "None"}
+
+Use search context only if relevant.
+
 ${formatRules}
 `,
-          },
-        ],
-        temperature: 0.7,
-        max_tokens: 1000,
-      },
-      {
-        headers: {
-          Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
-          "Content-Type": "application/json",
+            },
+          ],
+          temperature: 0.7,
+          max_tokens: 1000,
         },
-      }
-    );
+        {
+          headers: {
+            Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
+          },
+        }
+      );
 
-    const output = response.data.choices[0].message.content;
+      return response.data.choices[0].message.content.trim();
+    }
+
+    let output = await generateContent();
+
+    // ==============================
+    // VALIDATION CHECK (1 RETRY)
+    // ==============================
+
+    if (finalSubType === "Hashtags") {
+      const tagCount = output.split("#").length - 1;
+      if (tagCount < minTags || tagCount > maxTags) {
+        output = await generateContent();
+      }
+    } else {
+      const wordCount = output.split(/\s+/).filter(Boolean).length;
+      if (wordCount < minWords || wordCount > maxWords) {
+        output = await generateContent();
+      }
+    }
 
     return NextResponse.json({ output });
+
   } catch (error: any) {
-    console.error("FULL ERROR:", error.response?.data || error.message);
+    console.error("ERROR:", error.response?.data || error.message);
     return NextResponse.json(
       { error: error.response?.data || error.message },
       { status: 500 }
