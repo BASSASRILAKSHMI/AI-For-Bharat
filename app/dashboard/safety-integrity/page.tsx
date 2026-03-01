@@ -3,8 +3,7 @@
 import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { CheckCircle, AlertCircle, Shield, Activity } from 'lucide-react'
-import { SAFETY_METRICS } from '@/lib/mock-data'
-
+import { SAFETY_METRICS, VIRALITY_REASONS, VIRALITY_INTENT, VIRALITY_CONFIDENCE } from '@/lib/mock-data'
 export default function SafetyIntegrityPage() {
   return (
     <div className="space-y-6 pb-12">
@@ -25,8 +24,40 @@ export default function SafetyIntegrityPage() {
         </div>
       </Card>
 
+       {/* Engagement Authenticity Analysis */}
+<Card className="p-6 border-yellow-500/30 bg-yellow-500/5">
+  <h2 className="text-lg font-semibold text-foreground mb-4">
+    Engagement Authenticity Analysis
+  </h2>
+
+  <div className="flex items-start gap-4">
+    <AlertCircle size={26} className="text-yellow-600 flex-shrink-0 mt-1" />
+
+    <div className="space-y-2">
+      <p className="font-medium text-foreground">
+        Suspicious Engagement Detected ({VIRALITY_INTENT})
+      </p>
+
+      <p className="text-sm text-muted-foreground">
+        Confidence Score: <span className="font-semibold">{VIRALITY_CONFIDENCE}%</span>
+      </p>
+
+      <div className="mt-3">
+        <p className="text-sm font-medium mb-1">Reasons:</p>
+        <ul className="text-sm text-muted-foreground list-disc ml-5 space-y-1">
+          {VIRALITY_REASONS.map((reason, i) => (
+            <li key={i}>{reason}</li>
+          ))}
+        </ul>
+      </div>
+    </div>
+  </div>
+</Card>
+
+      
+
       {/* Safety Metrics */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
         {SAFETY_METRICS.map((metric) => (
           <Card key={metric.label} className="p-6">
             <div className="flex items-center justify-between mb-4">
@@ -117,6 +148,8 @@ export default function SafetyIntegrityPage() {
                 <CheckCircle size={20} className="text-green-600 flex-shrink-0 mt-0.5" />
                 <div>
                   <p className="font-medium text-foreground">Platform Terms of Service</p>
+                  {/* Fake Virality Detection */}
+
                   <p className="text-sm text-muted-foreground mt-1">
                     Compliant with all major social media platform guidelines.
                   </p>
@@ -147,6 +180,7 @@ export default function SafetyIntegrityPage() {
       </div>
 
       {/* Compliance Checklist */}
+     
       <Card className="p-6">
         <h2 className="text-lg font-semibold text-foreground mb-4">Compliance Checklist</h2>
         <div className="space-y-2">
