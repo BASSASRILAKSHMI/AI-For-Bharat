@@ -1,220 +1,206 @@
 'use client'
 
 import { analyzeVideoEngagement } from '@/lib/videoEngagementAnalyzer'
-import { generateAIRecommendations } from '@/lib/aiDecisionEngine'
-import { analyzeContentSafety } from "@/lib/safetyEngine"
+import { generateVerdict } from '@/lib/generateVerdict'
 import { useState } from 'react'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Play, BarChart3, Smile, Zap } from 'lucide-react'
+import { Upload, Zap } from 'lucide-react'
 import {
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer
+LineChart,
+Line,
+XAxis,
+YAxis,
+CartesianGrid,
+Tooltip,
+ResponsiveContainer
 } from 'recharts'
 
 export default function VideoIntelligencePage() {
 
-  const [analyzed, setAnalyzed] = useState(false)
-  const [analysis, setAnalysis] = useState<any>(null)
-  const [trends, setTrends] = useState<string[]>([])
-  const [loadingTrends, setLoadingTrends] = useState(false)
+const [file, setFile] = useState<File | null>(null)
+const [videoURL, setVideoURL] = useState<string>("")
+const [analysis, setAnalysis] = useState<any>(null)
+const [loading, setLoading] = useState(false)
+const [trends, setTrends] = useState<string[]>([])
+const [verdict, setVerdict] = useState("")
+const [niche, setNiche] = useState("general")
 
-  async function handleAnalyze() {
+async function handleAnalyze() {
+if (!file) return alert("Upload a video first")
 
-    setAnalyzed(true)
+setLoading(true)
 
-    // ---------- LOCAL AI ANALYSIS ----------
-    const result = analyzeVideoEngagement()
+try {
 
-    // ---------- REAL WORLD TREND DATA ----------
-    let trendTitles:string[] = []
+// ---------- AI ANALYSIS ----------
+const result = await analyzeVideoEngagement(file)
 
-    try {
-      setLoadingTrends(true)
+// prevent crash if lib returns partial data
+const safeResult = {
+engagementScore: result?.engagementScore ?? 0,
+retention: result?.retention ?? [],
+drops: result?.drops ?? [],
+suggestions: result?.suggestions ?? []
+}
 
-      const res = await fetch('/api/trends', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: 'instagram viral reels today' })
-      })
+setAnalysis(safeResult)
+setVideoURL(URL.createObjectURL(file))
 
-      const trendData = await res.json()
+// ---------- NICHE DETECTION ----------
+const name = file.name.toLowerCase()
+const detectedNiche =
+name.includes("food") ? "food" :
+name.includes("travel") ? "travel" :
+name.includes("gym") ? "fitness" :
+"content creation"
 
-      if (trendData?.organic) {
-        trendTitles = trendData.organic.slice(0,5).map((t:any)=>t.title)
-        setTrends(trendTitles)
-      }
+setNiche(detectedNiche)
 
-    } catch (err) {
-      console.log("Trend fetch failed", err)
-    } finally {
-      setLoadingTrends(false)
-    }
+// ---------- FETCH TRENDS ----------
+let trendTexts: string[] = []
 
-    // ---------- SAFETY ENGINE ----------
-    
+try {
+const res = await fetch('/api/trends', {
+method:'POST',
+headers:{'Content-Type':'application/json'},
+body:JSON.stringify({
+query:`latest ${detectedNiche} instagram reels trends hooks editing style`
+})
+})
 
-    // ---------- AI DECISION ENGINE ----------
-    const aiAdvice = generateAIRecommendations({
-      sentiment: "neutral",
-      engagementScore: result.engagementScore,
-      drops: result.drops,
-      peaks: result.peaks,
-      audience: { genZ: 52 },
-      trends: trendTitles
-    })
 
-    // ---------- FINAL COMBINED ANALYSIS ----------
-    setAnalysis({
-      ...result,
-      aiAdvice,
-    })
-  }
+const data = await res.json()
+trendTexts = data?.organic?.slice(0,5).map((r:any)=>r.snippet) || []
+setTrends(trendTexts)
 
-  return (
-    <div className="space-y-6 pb-12">
 
-      <div>
-        <h1 className="text-3xl font-bold text-foreground">Video Intelligence</h1>
-        <p className="text-muted-foreground mt-1">
-          Analyze viewer emotions and engagement throughout your video
-        </p>
-      </div>
+} catch {
+trendTexts = ["Trending hook based openings", "Fast paced cuts", "Subtitle storytelling"]
+setTrends(trendTexts)
+}
 
-      {!analyzed ? (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+// ---------- FINAL VERDICT ----------
+const verdictText = generateVerdict(safeResult, trendTexts, detectedNiche)
+setVerdict(verdictText)
 
-          <Card className="lg:col-span-2 p-8">
-            <h2 className="text-lg font-semibold mb-6">Upload Video</h2>
+} catch (err) {
+alert("AI failed to analyze video")
+console.log(err)
+}
 
-            <div className="border-2 border-dashed rounded-lg p-12 text-center mb-6">
-              <Play size={48} className="mx-auto text-muted-foreground mb-3" />
-              <p className="font-semibold">Drop your video here or click to upload</p>
-              <p className="text-sm text-muted-foreground">Supports MP4, WebM up to 1GB</p>
-            </div>
+setLoading(false)
+}
 
-            <Button className="w-full" size="lg" onClick={handleAnalyze}>
-              Analyze Video
-            </Button>
-          </Card>
+return (
 
-          <Card className="p-6 bg-accent/5 border-accent/20">
-            <h3 className="font-semibold mb-4">What We Analyze</h3>
-            <div className="space-y-3 text-sm">
-              <div className="flex gap-2"><Smile size={16}/> Emotional reactions</div>
-              <div className="flex gap-2"><BarChart3 size={16}/> Engagement timeline</div>
-              <div className="flex gap-2"><Zap size={16}/> Peak moments</div>
-            </div>
-          </Card>
+<div className="space-y-6 pb-12">
 
+  <div>
+    <h1 className="text-3xl font-bold">Video Intelligence</h1>
+    <p className="text-muted-foreground">
+      AI explains WHY your reel performs well or poorly
+    </p>
+  </div>
+
+{!analysis ? ( <Card className="p-8 text-center space-y-6">
+
+
+  <label className="border-2 border-dashed rounded-lg p-12 block cursor-pointer">
+    <Upload className="mx-auto mb-3 text-muted-foreground"/>
+    <p className="font-semibold">Click to upload video</p>
+    <input
+      type="file"
+      accept="video/*"
+      className="hidden"
+      onChange={(e)=>setFile(e.target.files?.[0] || null)}
+    />
+  </label>
+
+  <Button onClick={handleAnalyze} disabled={!file || loading}>
+    {loading ? "Analyzing..." : "Analyze Video"}
+  </Button>
+
+</Card>
+
+
+) : (
+
+<div className="space-y-6">
+
+  {videoURL && (
+  <Card className="p-6">
+    <video src={videoURL} controls className="rounded-lg w-full max-h-[400px]" />
+  </Card>
+  )}
+
+  <Card className="p-6 text-center">
+    <Zap className="mx-auto text-yellow-500 mb-2"/>
+    <p className="text-sm text-muted-foreground">Engagement Score</p>
+    <p className="text-3xl font-bold">{analysis.engagementScore}%</p>
+  </Card>
+
+  <Card className="p-6">
+    <h2 className="font-semibold mb-4">Viewer Retention</h2>
+    <ResponsiveContainer width="100%" height={250}>
+      <LineChart data={(analysis.retention || []).map((v:number,i:number)=>({t:i*5,v}))}>
+        <CartesianGrid strokeDasharray="3 3"/>
+        <XAxis dataKey="t"/>
+        <YAxis/>
+        <Tooltip/>
+        <Line type="monotone" dataKey="v" stroke="#10b981" strokeWidth={3} dot={false}/>
+      </LineChart>
+    </ResponsiveContainer>
+  </Card>
+
+  <Card className="p-6">
+    <h2 className="font-semibold mb-4">Detected Issues</h2>
+    <div className="space-y-3">
+      {(analysis.drops || []).map((d:any,i:number)=>(
+        <div key={i} className="p-4 rounded-lg border border-yellow-500/30 bg-yellow-500/5">
+          <p className="font-medium">{d.reason}</p>
+          <p className="text-sm text-muted-foreground">{d.impact}</p>
+          <Badge className="mt-2">at {d.time}</Badge>
         </div>
-      ) : (
-
-        <div className="space-y-6 animate-in fade-in duration-500">
-
-          {/* VIDEO */}
-          <Card className="p-6">
-            <div className="bg-secondary rounded-lg h-80 flex items-center justify-center">
-              <Play size={64} className="text-muted-foreground/30" />
-            </div>
-          </Card>
-
-          {/* GRAPH */}
-          <Card className="p-6">
-            <h2 className="text-lg font-semibold mb-4">Engagement Timeline</h2>
-
-            <ResponsiveContainer width="100%" height={300}>
-              <LineChart
-                data={analysis?.retention?.map((v:number,i:number)=>({
-                  time:`${i*10}s`,
-                  engagement:v
-                })) || []}
-              >
-                <CartesianGrid strokeDasharray="3 3"/>
-                <XAxis dataKey="time"/>
-                <YAxis/>
-                <Tooltip/>
-                <Line type="monotone" dataKey="engagement" stroke="#10b981" strokeWidth={3} dot={false}/>
-              </LineChart>
-            </ResponsiveContainer>
-          </Card>
-
-          {/* SCORE */}
-          <Card className="p-6 text-center">
-            <Zap className="mx-auto text-yellow-500 mb-2"/>
-            <p className="text-sm text-muted-foreground">Engagement Score</p>
-            <p className="text-2xl font-bold">{analysis?.engagementScore ?? 0}%</p>
-          </Card>
-
-          
-
-          {/* KEY MOMENTS */}
-          <Card className="p-6">
-            <h2 className="text-lg font-semibold mb-4">Key Moments</h2>
-
-            <div className="space-y-3">
-              {analysis?.peaks?.map((p:any,i:number)=>(
-                <div key={i} className="flex items-center gap-4 p-4 rounded-lg border border-green-500/30 bg-green-500/5">
-                  <div className="text-2xl">🔥</div>
-                  <div className="flex-1">
-                    <p className="font-medium">Peak engagement detected</p>
-                    <p className="text-sm text-muted-foreground">{p.time}</p>
-                  </div>
-                  <Badge className="bg-green-500/20 text-green-700">Peak</Badge>
-                </div>
-              ))}
-
-              {analysis?.drops?.map((d:any,i:number)=>(
-                <div key={i} className="flex items-center gap-4 p-4 rounded-lg border border-yellow-500/30 bg-yellow-500/5">
-                  <div className="text-2xl">⚠️</div>
-                  <div className="flex-1">
-                    <p className="font-medium">Viewer drop detected</p>
-                    <p className="text-sm text-muted-foreground">{d.time}</p>
-                  </div>
-                  <Badge className="bg-yellow-500/20 text-yellow-700">Drop</Badge>
-                </div>
-              ))}
-            </div>
-          </Card>
-
-          {/* TRENDS */}
-          <Card className="p-6 border-blue-500/30 bg-blue-500/5">
-            <h2 className="text-lg font-semibold mb-4">🔥 Trending Reel Ideas</h2>
-
-            {loadingTrends && <p className="text-sm text-muted-foreground">Fetching trends...</p>}
-
-            <div className="space-y-3">
-              {trends.map((t,i)=>(
-                <div key={i} className="p-3 rounded-lg border hover:border-primary/40">
-                  {t}
-                </div>
-              ))}
-            </div>
-          </Card>
-
-          {/* AI RECOMMENDATIONS */}
-          {analysis?.aiAdvice && (
-            <Card className="p-6 bg-blue-500/5 border-blue-500/20">
-              <h2 className="text-lg font-semibold mb-4">AI Strategic Suggestions</h2>
-
-              <div className="space-y-3">
-                {analysis.aiAdvice.map((tip:string,i:number)=>(
-                  <div key={i} className="p-3 rounded-lg bg-background border">
-                    {tip}
-                  </div>
-                ))}
-              </div>
-            </Card>
-          )}
-
-        </div>
-      )}
+      ))}
     </div>
-  )
+  </Card>
+
+  <Card className="p-6">
+    <h2 className="font-semibold mb-4">AI Fix Suggestions</h2>
+    <div className="space-y-3">
+      {(analysis.suggestions || []).map((s:string,i:number)=>(
+        <div key={i} className="p-3 rounded-lg border bg-background">
+          {s}
+        </div>
+      ))}
+    </div>
+  </Card>
+
+  <Card className="p-6 border-blue-500/30 bg-blue-500/5">
+    <h2 className="font-semibold mb-4">Current {niche} Trends</h2>
+    <div className="space-y-3">
+      {trends.map((t,i)=>(
+        <div key={i} className="p-3 rounded-lg border">
+          {t}
+        </div>
+      ))}
+    </div>
+  </Card>
+
+  <Card className="p-6 border-green-500/30 bg-green-500/5">
+    <h2 className="font-semibold mb-3">Final AI Verdict</h2>
+    <p className="text-lg leading-relaxed font-medium">
+      {verdict}
+    </p>
+  </Card>
+
+</div>
+
+
+)}
+
+</div>
+)
 }

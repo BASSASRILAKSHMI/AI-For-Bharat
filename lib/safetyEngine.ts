@@ -1,54 +1,90 @@
 export function analyzeContentSafety(text: string) {
 
-  const lower = text.toLowerCase()
+  const t = text.toLowerCase().trim()
 
-  // ---------- DETECT VIOLENCE ----------
-  const violenceWords = ["kill","attack","burn","destroy","beat","fight","bomb"]
-  const hateWords = ["idiot","stupid","hate","loser","dumb","ugly"]
-  const selfHarmWords = ["die","suicide","end my life","no reason to live"]
+  // ----------------------------
+  // 1. Protected groups
+  // ----------------------------
+  const protectedGroups = [
+    "women","men","girls","boys","religion","muslim","hindu","christian",
+    "black","white","asian","immigrant","disabled","poor","rich","gay","lesbian"
+  ]
 
-  let risk = "safe"
-  let reason = "No harmful intent detected"
-  let suggestion = null
-  let detectedEmotion = "neutral"
+  const hateWords = ["weak","inferior","dirty","useless","should not exist"]
 
-  // Violence
-  if (violenceWords.some(w => lower.includes(w))) {
-    risk = "high"
-    reason = "Violent language detected"
-    detectedEmotion = "anger"
-    suggestion = text.replace(/kill|attack|destroy/gi,"challenge")
+  if (protectedGroups.some(g => t.includes(g)) &&
+      hateWords.some(w => t.includes(w))) {
+    return {
+      risk: "high",
+      type: "hate speech",
+      detectedEmotion: "hostile",
+      reason: "Targets a protected group with harmful statement",
+      suggestion: "Avoid targeting groups of people. Focus criticism on behavior instead."
+    }
   }
 
-  // Hate speech
-  else if (hateWords.some(w => lower.includes(w))) {
-    risk = "warning"
-    reason = "Potential harassment detected"
-    detectedEmotion = "aggressive"
-    suggestion = "Consider using respectful language to keep audience trust."
+  // ----------------------------
+  // 2. Violence detection
+  // ----------------------------
+  const violentWords = ["kill","attack","beat","hurt","destroy","eliminate"]
+
+  if (violentWords.some(v => t.includes(v))) {
+    return {
+      risk: "high",
+      type: "violent intent",
+      detectedEmotion: "anger",
+      reason: "Encourages harm or violence",
+      suggestion: "Remove violent phrasing and express disagreement constructively."
+    }
   }
 
-  // Self harm
-  else if (selfHarmWords.some(w => lower.includes(w))) {
-    risk = "critical"
-    reason = "Self-harm related content"
-    detectedEmotion = "distress"
-    suggestion = "Provide supportive message and avoid harmful expressions."
+  // ----------------------------
+  // 3. Positive / anti-hate detection
+  // ----------------------------
+  const positivePatterns = [
+    "should not hate",
+    "do not hate",
+    "don't hate",
+    "respect everyone",
+    "treat equally",
+    "no discrimination",
+    "spread love",
+    "be kind"
+  ]
+
+  if (positivePatterns.some(p => t.includes(p))) {
+    return {
+      risk: "low",
+      type: "safe",
+      detectedEmotion: "positive",
+      reason: "Promotes respectful behavior",
+      suggestion: ""
+    }
   }
 
-  // Clickbait emotional manipulation
-  if (lower.includes("100% guarantee") || lower.includes("you wont believe")) {
-    risk = "warning"
-    reason = "Manipulative emotional phrasing"
-    detectedEmotion = "manipulation"
-    suggestion = "Try transparent and honest wording instead."
+  // ----------------------------
+  // 4. General hostility (important fix)
+  // ----------------------------
+  const aggressiveWords = ["hate","stupid","idiot","annoying","trash","nonsense"]
+
+  if (aggressiveWords.some(w => t.includes(w))) {
+    return {
+      risk: "medium",
+      type: "toxic language",
+      detectedEmotion: "negative",
+      reason: "Aggressive wording but not targeting identity",
+      suggestion: "Use neutral wording to express disagreement."
+    }
   }
 
+  // ----------------------------
+  // 5. Safe content
+  // ----------------------------
   return {
-    risk,
-    reason,
-    suggestion,
-    detectedEmotion,
-    confidence: Math.floor(70 + Math.random()*25) // makes it feel AI
+    risk: "low",
+    type: "safe",
+    detectedEmotion: "neutral",
+    reason: "No harmful patterns detected",
+    suggestion: ""
   }
 }
