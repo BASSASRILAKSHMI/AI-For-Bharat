@@ -613,4 +613,5 @@ ${formatRules}
       { error: error.response?.data || error.message },
       { status: 500 }
     );
-  }}
+  }
+}
