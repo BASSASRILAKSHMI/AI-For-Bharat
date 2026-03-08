@@ -29,8 +29,8 @@ export default function SettingsPage() {
   })
 
   const handleToggle = (category: string, key: string) => {
-  setSettings((prev) => {
-    const categoryData = prev[category as keyof typeof prev] as any
+  setSettings((prev: any) => {
+    const categoryData = prev[category]
 
     return {
       ...prev,
@@ -43,6 +43,8 @@ export default function SettingsPage() {
 
   setShowSaveAlert(true)
 }
+
+   
   const handleSave = () => {
     setShowSaveAlert(false)
   }
