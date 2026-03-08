@@ -27,7 +27,7 @@ const navigation = [
   { name: 'Content Generator', href: '/dashboard/content-generator', icon: Sparkles },
   { name: 'Canvas Editor', href: '/dashboard/canvas-editor', icon: Edit3 },
   { name: 'Video Intelligence', href: '/dashboard/video-intelligence', icon: Video },
-  { name: 'Trend Insights', href: '/dashboard/trend-insights', icon: TrendingUp },
+{ name: "Content Safety", href: "/dashboard/content-safety", icon: Shield },  { name: 'Trend Insights', href: '/dashboard/trend-insights', icon: TrendingUp },
   { name: 'Safety & Integrity', href: '/dashboard/safety-integrity', icon: Shield },
   { name: 'Audience Simulator', href: '/dashboard/audience-simulator', icon: Users },
   { name: 'Summarization', href: '/dashboard/summarization', icon: BookOpen },
